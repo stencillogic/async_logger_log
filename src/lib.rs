@@ -73,7 +73,7 @@ extern crate time;
 
 
 use log::{Log, Metadata, Record};
-use async_logger::{AsyncLoggerNB, FileWriter};
+use async_logger::{AsyncLoggerNB, FileWriter, Error};
 use std::sync::Arc;
 use time::OffsetDateTime;
 
@@ -90,9 +90,9 @@ pub struct Logger {
 impl Logger {
     
     /// Create a new logger instance and register in log facade.
-    pub fn new(log_dir: &str, buf_sz: usize) -> Result<Logger, ()> {
+    pub fn new(log_dir: &str, buf_sz: usize) -> Result<Logger, Error> {
 
-        let writer = FileWriter::new(log_dir).unwrap();
+        let writer = FileWriter::new(log_dir)?;
 
         let async_logger = Arc::new(AsyncLoggerNB::new(Box::new(writer), buf_sz)?);
 
@@ -171,7 +171,7 @@ impl LoggerBuilder {
     }
 
     /// Build the `Logger` instance.
-    pub fn build(self) -> Result<Logger,()> {
+    pub fn build(self) -> Result<Logger,Error> {
 
         let buf_sz = match self.buf_sz {
             Some(buf_sz) => buf_sz,
@@ -180,7 +180,7 @@ impl LoggerBuilder {
         
         let writer = match self.writer {
             Some(writer) => writer,
-            None => Box::new(FileWriter::new(".").unwrap()),
+            None => Box::new(FileWriter::new(".")?),
         };
 
         let formatter = match self.formatter {
@@ -197,4 +197,79 @@ impl LoggerBuilder {
     }
 }
 
+#[cfg(test)]
+mod tests {
 
+    use super::*;
+    use async_logger::ErrorKind;
+    use std::path::Path;
+
+
+    const LOG_DIR: &str = "/tmp/AsyncLoggerNBTest_000239400377";
+    const NONEXISTING_LOG_DIR: &str = "/tmp/AsyncLoggerNBTest_85003857407";
+
+
+    #[test]
+    fn test_error() {
+
+        // via new
+
+        if Path::new(LOG_DIR).exists() {
+            std::fs::remove_dir_all(LOG_DIR).expect("Failed to delete test dir on cleanup");
+        }
+
+        std::fs::create_dir(LOG_DIR).expect("Failed to create test dir");
+
+        match Logger::new(LOG_DIR, 0) {
+            Err(e) if e.kind() == ErrorKind::IncorrectBufferSize => {},
+            _ => panic!("Expected error, got Ok!"),
+        }
+
+        std::fs::remove_dir_all(LOG_DIR).expect("Failed to delete test dir on cleanup");
+        std::fs::create_dir(LOG_DIR).expect("Failed to create test dir");
+
+        match Logger::new(LOG_DIR, std::usize::MAX) {
+            Err(e) if e.kind() == ErrorKind::IncorrectBufferSize => {},
+            _ => panic!("Expected error, got Ok!"),
+        }
+
+        std::fs::remove_dir_all(LOG_DIR).expect("Failed to delete test dir on cleanup");
+
+        match Logger::new(NONEXISTING_LOG_DIR, 100) {
+            Err(e) if e.kind() == ErrorKind::IoError => {
+            },
+            _ => panic!("Expected error, got Ok!"),
+        }
+
+        // via builder 
+
+        std::fs::create_dir(LOG_DIR).expect("Failed to create test dir");
+
+        let writer = FileWriter::new(LOG_DIR).expect("Failed to create file writer");
+
+        match Logger::builder()
+            .buf_size(0)
+            .writer(Box::new(writer))
+            .build() 
+        {
+            Err(e) if e.kind() == ErrorKind::IncorrectBufferSize => {},
+            _ => panic!("Expected error, got Ok!"),
+        }
+
+        std::fs::remove_dir_all(LOG_DIR).expect("Failed to delete test dir on cleanup");
+        std::fs::create_dir(LOG_DIR).expect("Failed to create test dir");
+
+        let writer = FileWriter::new(LOG_DIR).expect("Failed to create file writer");
+
+        match Logger::builder()
+            .buf_size(std::usize::MAX)
+            .writer(Box::new(writer))
+            .build() 
+        {
+            Err(e) if e.kind() == ErrorKind::IncorrectBufferSize => {},
+            _ => panic!("Expected error, got Ok!"),
+        }
+
+        std::fs::remove_dir_all(LOG_DIR).expect("Failed to delete test dir on cleanup");
+    }
+}
