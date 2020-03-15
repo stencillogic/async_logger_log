@@ -7,6 +7,7 @@ keywords = ["log", "logging", "logger"]
 description = "Asyncronous logging"
 repository = "https://github.com/stencillogic/async_logger_log"
 readme = "README.md"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
