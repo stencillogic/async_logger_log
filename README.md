@@ -1,5 +1,7 @@
 # async_logger_log
 
+![Rust](https://github.com/stencillogic/async_logger_log/workflows/Rust/badge.svg)
+
 Asyncronous logger implementation of [log](https://docs.rs/log) facade. The implementation is
 based on [async_logger](https://docs.rs/async_logger) crate, and allows non-blocking writes of 
 log records in memory buffer, which in turn then processed in separate thread by writer (see
