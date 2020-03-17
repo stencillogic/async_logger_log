@@ -71,10 +71,19 @@ fn test_logger() {
 
     for s in &["main", "thread"] {
         for l in &["DEBUG", "ERROR", "INFO", "TRACE", "WARN"] {
-            let re = format!("\\[\\d{{4}}-\\d{{2}}-\\d{{2}} \\d{{2}}:\\d{{2}}:\\d{{2}}.\\d{{9}}[+-]\\d{{4}} {} {}\\]: {}\n",
+            let re_str;
+            #[cfg(feature="time")]
+            {
+                re_str = format!("\\[\\d{{4}}-\\d{{2}}-\\d{{2}} \\d{{2}}:\\d{{2}}:\\d{{2}}.\\d{{9}}[+-]\\d{{4}} {} {}\\]: {}\n",
                              l, s, write_line);
+            }
+            #[cfg(not(feature="time"))]
+            {
+                re_str = format!("\\[\\d+ {} {}\\]: {}\n",
+                             l, s, write_line);
+            }
 
-            let re = Regex::new(&re).unwrap();
+            let re = Regex::new(&re_str).unwrap();
 
             matches.push((s, l, re, 0u32));
         }

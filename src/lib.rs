@@ -69,12 +69,16 @@
 
 extern crate async_logger;
 extern crate log;
+
+#[cfg(feature="time")]
 extern crate time;
 
 
 use log::{Log, Metadata, Record};
 use async_logger::{AsyncLoggerNB, FileWriter, Error};
 use std::sync::Arc;
+
+#[cfg(feature="time")]
 use time::OffsetDateTime;
 
 
@@ -115,7 +119,18 @@ impl Logger {
 
     fn format_msg(record: &Record) -> String {
 
-        let time = OffsetDateTime::now_local().format("%Y-%m-%d %H:%M:%S.%N%z");
+        let time;
+        #[cfg(feature="time")] 
+        {
+            time = OffsetDateTime::now_local().format("%Y-%m-%d %H:%M:%S.%N%z");
+        }
+        #[cfg(not(feature="time"))] 
+        {
+            time = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or(std::time::Duration::new(0,0))
+                .as_secs();
+        }
 
         format!("[{} {} {}]: {}\n", time, record.level(), record.target(), record.args())
     }

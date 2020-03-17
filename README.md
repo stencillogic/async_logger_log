@@ -69,3 +69,11 @@ debug!("{}", "Hello, Wrold!");
 
 log::logger().flush();
 ```
+
+# Notes
+
+Dependency on `time` crate is optional and can be excluded by adding in Cargo.toml:
+
+[dependencies.async_logger_log]
+default-features = false
+
