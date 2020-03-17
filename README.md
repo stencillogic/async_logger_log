@@ -72,8 +72,11 @@ log::logger().flush();
 
 # Notes
 
-Dependency on `time` crate is optional and can be excluded by adding in Cargo.toml:
+1. Dependency on `time` crate is optional and can be excluded by adding in Cargo.toml:
 
+```
 [dependencies.async_logger_log]
 default-features = false
+```
 
+2. This crate was tested on Linux x86_64. Rust version 1.42.
