@@ -115,7 +115,7 @@ impl Logger {
 
     fn format_msg(record: &Record) -> String {
 
-        let time = OffsetDateTime::now_local().format("%F %T.%N%z");
+        let time = OffsetDateTime::now_local().format("%Y-%m-%d %H:%M:%S.%N%z");
 
         format!("[{} {} {}]: {}\n", time, record.level(), record.target(), record.args())
     }
