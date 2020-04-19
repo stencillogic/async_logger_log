@@ -18,6 +18,8 @@ use regex::Regex;
 
 const LOG_DIR: &str = "/tmp/AsyncLoggerNBTest_49873205451691";
 
+const LOG_FILE_SIZE: usize = 10*1024*1024;
+
 static mut TEST_MUTEX: MaybeUninit<Mutex<()>> = MaybeUninit::uninit();
 
 static INIT_MUTEX: Once = Once::new();
@@ -90,7 +92,7 @@ fn test_logger() {
     }
 
 
-    let logger = Logger::new(LOG_DIR, buf_sz).expect("Failed to create Logger instance");
+    let logger = Logger::new(LOG_DIR, buf_sz, LOG_FILE_SIZE).expect("Failed to create Logger instance");
     log::set_boxed_logger(Box::new(logger)).expect("Failed to set logger");
     log::set_max_level(log::LevelFilter::Trace);
 

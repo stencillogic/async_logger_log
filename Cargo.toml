@@ -1,10 +1,10 @@
 [package]
 name = "async_logger_log"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["stencillogic <stencillogic@gmail.com>"]
 edition = "2018"
 keywords = ["log", "logging", "logger"]
-description = "Asyncronous logging"
+description = "Asynchronous logging"
 repository = "https://github.com/stencillogic/async_logger_log"
 readme = "README.md"
 license = "MIT"
@@ -15,7 +15,7 @@ license = "MIT"
 default = ["time"]
 
 [dependencies]
-async_logger = "0.2.0"
+async_logger = {version = "0.3.0"}
 log = {version = "0.4.8", features = ["std"]}
 time = {version = "0.2.9", features = ["std"], optional=true}
 

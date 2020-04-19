@@ -2,7 +2,7 @@
 
 ![Rust](https://github.com/stencillogic/async_logger_log/workflows/Rust/badge.svg)
 
-Asyncronous logger implementation of [log](https://docs.rs/log) facade. The implementation is
+Asynchronous logger is a performant implementation of [log](https://docs.rs/log) facade. The implementation is
 based on [async_logger](https://docs.rs/async_logger) crate, and allows non-blocking writes of 
 log records in memory buffer, which in turn then processed in separate thread by writer (see
 more details in `async_logger` documentation).
@@ -14,13 +14,13 @@ itself. Log record example:
 
 The log record format, and other parameters are customizable with `LoggerBuilder`.
 
-# Examples
+## Examples
 
 ``` rust
 use async_logger_log::Logger;
 use log::{info, warn};
 
-let logger = Logger::new("/tmp", 65536).expect("Failed to create Logger instance");
+let logger = Logger::new("/tmp", 256, 10*1024*1024).expect("Failed to create Logger instance");
 
 log::set_boxed_logger(Box::new(logger)).expect("Failed to set logger");
 log::set_max_level(log::LevelFilter::Info);
@@ -43,22 +43,24 @@ fn custom_formatter(record: &Record) -> String {
     format!("log record: {}\n", record.args())
 }
 
-struct WriterTest {}
+struct StdoutWriter {}
 
 // Writer simply prints log messages to stdout
-impl Writer for WriterTest {
+impl Writer<Box<String>> for StdoutWriter {
 
-    fn process_slice(&mut self, slice: &[u8]) {
-        println!("Got log message: {}", String::from_utf8_lossy(slice));
+    fn process_slice(&mut self, slice: &[Box<String>]) {
+        for item in slice {
+            println!("{}", **item);
+        }
     }
 
     fn flush(&mut self) { }
 }
 
 let logger = Logger::builder()
-    .buf_size(100)
+    .buf_size(256)
     .formatter(custom_formatter)
-    .writer(Box::new(WriterTest {}))
+    .writer(Box::new(StdoutWriter {}))
     .build()
     .unwrap();
 

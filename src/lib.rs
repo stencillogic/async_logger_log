@@ -1,7 +1,7 @@
-//! Asyncronous logger implementation of [log](https://docs.rs/log) facade. The implementation is
+//! Asynchronous logger is a performant implementation of [log](https://docs.rs/log) facade. The implementation is
 //! based on [async_logger](https://docs.rs/async_logger) crate, and allows non-blocking writes of 
-//! log records in memory buffer, which in turn then processed in separate thread by writer (see
-//! more details in `async_logger` documentation).
+//! references of log records in memory buffer. The messages in turn then processed in separate thread 
+//! by writer (see more details in `async_logger` documentation).
 //!
 //! Default log record format includes date, time, timezone, log level, target, and log message
 //! itself. Log record example:
@@ -16,7 +16,7 @@
 //! use async_logger_log::Logger;
 //! use log::{info, warn};
 //!
-//! let logger = Logger::new("/tmp", 65536).expect("Failed to create Logger instance");
+//! let logger = Logger::new("/tmp", 256, 10*1024*1024).expect("Failed to create Logger instance");
 //!
 //! log::set_boxed_logger(Box::new(logger)).expect("Failed to set logger");
 //! log::set_max_level(log::LevelFilter::Info);
@@ -39,22 +39,24 @@
 //!     format!("log record: {}\n", record.args())
 //! }
 //! 
-//! struct WriterTest {}
+//! struct StdoutWriter {}
 //! 
 //! // Writer simply prints log messages to stdout
-//! impl Writer for WriterTest {
+//! impl Writer<Box<String>> for StdoutWriter {
 //! 
-//!     fn process_slice(&mut self, slice: &[u8]) {
-//!         println!("Got log message: {}", String::from_utf8_lossy(slice));
+//!     fn process_slice(&mut self, slice: &[Box<String>]) {
+//!         for item in slice {
+//!             println!("{}", **item);
+//!         }
 //!     }
 //! 
 //!     fn flush(&mut self) { }
 //! }
 //! 
 //! let logger = Logger::builder()
-//!     .buf_size(100)
+//!     .buf_size(256)
 //!     .formatter(custom_formatter)
-//!     .writer(Box::new(WriterTest {}))
+//!     .writer(Box::new(StdoutWriter {}))
 //!     .build()
 //!     .unwrap();
 //! 
@@ -65,6 +67,24 @@
 //! 
 //! log::logger().flush();
 //! ```
+//!
+//! ### Notes
+//!
+//! The formatting is done by the caller of logging macros. This operation produces `String` insance 
+//! containing complete log message. Then the reference of that `String` instance is passed to
+//! the underling non-blocking queue. The log message is then fetched, processed, and dropped by the writer thread. 
+//! So, the cost for the client mostly consists of allocation and building of log message string. 
+//!
+//! The logger doesn't drop the log messages if the queue is full. In that case the operation
+//! blocks until there is free slot in one of the queue buffers.
+//!
+//! Dependency on `time` crate is optional and can be excluded by adding in Cargo.toml:
+//!
+//! ``` toml
+//! [dependencies.async_logger_log]
+//! default-features = false
+//! ```
+
 
 
 extern crate async_logger;
@@ -82,21 +102,26 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 
 
-const DEFAULT_BUF_SIZE: usize = 65536;
+const DEFAULT_BUF_SIZE: usize = 256;
+const DEFAULT_LOG_FILE_SIZE: usize = 10*1024*1024;
 
 
 /// Log trait implementation.
 pub struct Logger {
-    async_logger: Arc<AsyncLoggerNB>,
+    async_logger: Arc<AsyncLoggerNB<Box<String>>>,
     formatter: fn(&Record) -> String,
 }
 
 impl Logger {
-    
-    /// Create a new logger instance and register in log facade.
-    pub fn new(log_dir: &str, buf_sz: usize) -> Result<Logger, Error> {
 
-        let writer = FileWriter::new(log_dir)?;
+    /// Creates a new logger instance and registers itself in the log facade.
+    ///
+    /// `buf_sz`: number of messages that internal buffer can hold.
+    ///
+    /// `file_size`: the size in bytes after which log file rotation occurs.
+    pub fn new(log_dir: &str, buf_sz: usize, file_size: usize) -> Result<Logger, Error> {
+
+        let writer = FileWriter::new(log_dir, file_size)?;
 
         let async_logger = Arc::new(AsyncLoggerNB::new(Box::new(writer), buf_sz)?);
 
@@ -147,7 +172,7 @@ impl Log for Logger {
 
         let msg = (self.formatter)(record);
 
-        let _ = self.async_logger.write_slice(msg.as_bytes());
+        let _ = self.async_logger.write_value(Box::new(msg));
     }
 
     fn flush(&self) {
@@ -156,18 +181,17 @@ impl Log for Logger {
     }
 }
 
-
 /// Builder of `Logger` instance. It can be used to provide custom record formatter, and writer
 /// implementation.
 pub struct LoggerBuilder {
     buf_sz: Option<usize>,
-    writer: Option<Box<dyn async_logger::Writer>>,
+    writer: Option<Box<dyn async_logger::Writer<Box<String>>>>,
     formatter: Option<fn(&Record) -> String>,
 }
 
 impl LoggerBuilder {
 
-    /// Set the size of the pair of underlying buffers. The default is 65536 bytes each.
+    /// Set the size of the pair of underlying buffers. The default is 256 messages each.
     pub fn buf_size(mut self, size: usize) -> Self {
         self.buf_sz = Some(size);
         self
@@ -180,7 +204,7 @@ impl LoggerBuilder {
     }
 
     /// Set custom writer implementation. The default is `FileWriter`.
-    pub fn writer(mut self, writer: Box<dyn async_logger::Writer>) -> Self {
+    pub fn writer(mut self, writer: Box<dyn async_logger::Writer<Box<String>>>) -> Self {
         self.writer = Some(writer);
         self
     }
@@ -195,7 +219,7 @@ impl LoggerBuilder {
         
         let writer = match self.writer {
             Some(writer) => writer,
-            None => Box::new(FileWriter::new(".")?),
+            None => Box::new(FileWriter::new(".", DEFAULT_LOG_FILE_SIZE)?),
         };
 
         let formatter = match self.formatter {
@@ -222,7 +246,7 @@ mod tests {
 
     const LOG_DIR: &str = "/tmp/AsyncLoggerNBTest_000239400377";
     const NONEXISTING_LOG_DIR: &str = "/tmp/AsyncLoggerNBTest_85003857407";
-
+    const LOG_FILE_SIZE: usize = 4096;
 
     #[test]
     fn test_error() {
@@ -235,7 +259,7 @@ mod tests {
 
         std::fs::create_dir(LOG_DIR).expect("Failed to create test dir");
 
-        match Logger::new(LOG_DIR, 0) {
+        match Logger::new(LOG_DIR, 0, LOG_FILE_SIZE) {
             Err(e) if e.kind() == ErrorKind::IncorrectBufferSize => {},
             _ => panic!("Expected error, got Ok!"),
         }
@@ -243,14 +267,14 @@ mod tests {
         std::fs::remove_dir_all(LOG_DIR).expect("Failed to delete test dir on cleanup");
         std::fs::create_dir(LOG_DIR).expect("Failed to create test dir");
 
-        match Logger::new(LOG_DIR, std::usize::MAX) {
+        match Logger::new(LOG_DIR, std::usize::MAX, LOG_FILE_SIZE) {
             Err(e) if e.kind() == ErrorKind::IncorrectBufferSize => {},
             _ => panic!("Expected error, got Ok!"),
         }
 
         std::fs::remove_dir_all(LOG_DIR).expect("Failed to delete test dir on cleanup");
 
-        match Logger::new(NONEXISTING_LOG_DIR, 100) {
+        match Logger::new(NONEXISTING_LOG_DIR, 100, LOG_FILE_SIZE) {
             Err(e) if e.kind() == ErrorKind::IoError => {
             },
             _ => panic!("Expected error, got Ok!"),
@@ -260,7 +284,7 @@ mod tests {
 
         std::fs::create_dir(LOG_DIR).expect("Failed to create test dir");
 
-        let writer = FileWriter::new(LOG_DIR).expect("Failed to create file writer");
+        let writer = FileWriter::new(LOG_DIR, LOG_FILE_SIZE).expect("Failed to create file writer");
 
         match Logger::builder()
             .buf_size(0)
@@ -274,7 +298,7 @@ mod tests {
         std::fs::remove_dir_all(LOG_DIR).expect("Failed to delete test dir on cleanup");
         std::fs::create_dir(LOG_DIR).expect("Failed to create test dir");
 
-        let writer = FileWriter::new(LOG_DIR).expect("Failed to create file writer");
+        let writer = FileWriter::new(LOG_DIR, LOG_FILE_SIZE).expect("Failed to create file writer");
 
         match Logger::builder()
             .buf_size(std::usize::MAX)

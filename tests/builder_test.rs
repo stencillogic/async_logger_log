@@ -16,14 +16,16 @@ fn custom_formatter(record: &Record) -> String {
 
 struct WriterTest {}
 
-impl Writer for WriterTest {
+impl Writer<Box<String>> for WriterTest {
 
-    fn process_slice(&mut self, slice: &[u8]) {
+    fn process_slice(&mut self, slice: &[Box<String>]) {
 
-        assert_eq!(
-            format!("\t{}\t", SAMPLE_LOG_MSG), 
-            String::from_utf8_lossy(slice)
-        );
+        for item in slice {
+            assert_eq!(
+                format!("\t{}\t", SAMPLE_LOG_MSG),
+                **item
+            );
+        }
     }
 
     fn flush(&mut self) { }
